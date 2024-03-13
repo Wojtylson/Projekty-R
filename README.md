@@ -7,4 +7,4 @@ Projekt2 zawiera analizę dziennych notowań z indeksu WIG20 z okresu od począt
 
 Projekt3 zawiera badanie własności estymatorów Metody Największej Wiarygodności parametrów rozkładu gamma dla różnej ilości wylosowanych danych.
 
-
+Projekt4 zawiera mały projekt w Excelu, który oblicza przedział ufności dla wartości oczekiwanej dla populacji skończonej i nieskończonej.
