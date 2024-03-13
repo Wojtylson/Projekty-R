@@ -1,0 +1,268 @@
+---
+title: "RPiSM Projekt nr 3"
+author: "Wojciech Kantor, Wojciech Liberacki, Łukasz Maczek"
+date: "2024-01-21"
+output:
+  html_document:
+    toc: true
+    toc_float:
+      smooth_scrool: true
+    df_print: paged
+---
+
+# Wstęp
+
+Potrzebne pakiety:
+```{r message=FALSE, warning=FALSE}
+library(QRM)
+library(psych)
+library(dplyr)
+library(ggplot2)
+```
+
+W tym projekcie będziemy badać własności estymatorów Metody Największej Wiarygodności parametrów rozkładu gamma (są to parametry k i θ). Dla każdego z trzech przykładów będziemy porównywali te własności dla liczby danych n = (10, 50, 100, 500, 1000).
+
+# Używane funkcje
+
+Na początku przedstawimy używane przez nas w późniejszych częściach funkcje:
+
+- Funkcja wiarygodności, estymacja parametrów przy użyciu funkcji `optim()` oraz ramka danych, w której jest 300 par wygenerowanych parametrów za pomocą utworzonych estymatorów:
+```{r}
+estymacja_i_wiar <- function(liczba_danych, kształt_początkowy, skala_początkowa) {
+  funkcja_wiar <- function(dane, parametry) {
+    -sum(log(dgamma(dane, shape = parametry[1], scale = parametry[2])))
+  }
+  estymacja <- function(l, a, b) {
+    dane <- rgamma(l, shape = a, scale = b)
+    optim(c(a, b), funkcja_wiar, dane = dane, lower = c(0.1,0.1), upper = c(20,20), method = "L-BFGS-B")
+  }
+  wiem <- function() {
+    data <- data.frame(x = rep(0, 300), y = rep(0, 300))
+    for (i in 1:300) {
+      z <- estymacja(liczba_danych, kształt_początkowy, skala_początkowa)
+      data[i, 1] = round(z$par[1], 5)
+      data[i, 2] = round(z$par[2], 5)
+    }
+    return(data)
+  }
+  
+  return(wiem())
+}
+```
+
+- Funkcja, która w ramce danych przedstawia obliczone statystyki opisowe oraz sprawdza normalność rozkładu:
+```{r}
+generowanie_charakterystyki <- function(df) { 
+  charakterystyki_rozkladu <- df %>%
+    mutate(liczba_danych = as.numeric(liczba_danych)) %>%
+    arrange(liczba_danych) %>%
+    group_by(liczba_danych) %>%
+    summarise(
+      "Średnia" = round(mean(wynik), 5),
+      "Odchylenie std." = round(sd(wynik), 5),
+      "Skośność" = round(skewness(wynik), 5),
+      "Kurtoza" = round(kurtosis(wynik), 5),
+      "Minimum" = round(min(wynik), 5),
+      "Maximum" = round(max(wynik), 5),
+      "Rozkładn nor." = ifelse(shapiro.test(wynik)$p.value > 0.05, "Tak", "Nie")
+    )
+  return(charakterystyki_rozkladu)
+}
+```
+
+- Funkcja, która rysuje wykresy gęstości dla różnej ilości generowanych danych:
+```{r}
+wykres<- function(dane,parametr){
+  ggplot(dane, aes(x = wynik, fill = factor(liczba_danych, levels = unique(liczba_danych)))) +
+    geom_density(alpha = 0.5, position = "identity") +
+    labs(title = paste("Wykres gęstości w zależności od liczby danych dla parametru",parametr),
+         x = "Wartości", y = "Gęstość", fill = "Liczba danych") +
+    theme_minimal() +
+    facet_wrap(~ liczba_danych, scales = "free")}
+```
+
+- Funkcja, która rysuje wykresy pudełkowe dla różnej ilości generowanych danych:
+```{r}
+pudelkowy <- function(dane,parametr){
+  ggplot(dane, aes(x = factor(liczba_danych, levels = unique(liczba_danych)), y = wynik, fill = liczba_danych)) +
+    geom_boxplot() +
+    labs(title = paste("Wykres pudełkowy w zależności od liczby danych dla parametru",parametr),
+         x = "Liczba danych", y = "Wartości", fill = "Liczba danych") +
+    theme_minimal()}
+```
+
+
+# Pierwszy przypadek
+
+W pierwszym przypadku będziemy sprawdzali estymator dla rozkładu gamma o parametrach k=1 i θ=2. 
+;
+Najpierw przyglądnijmy się jak wygląda przykładowy rozkład gamma o tych parametrach
+```{r}
+okej <- rgamma(10000,shape=1,scale=2)
+r <- data.frame(value=okej,group="k=1,teta=2")
+
+ggplot(r, aes(x = value, fill = group)) +
+  geom_density(alpha = 0.5) +
+   scale_fill_manual(values = "blue") 
+```
+
+Następnie do 5 wektorów wstawimy dane, które będą zawierały wartości estymowanych parametrów w zależności od liczby danych, użyjemy do tego stworzonej przez nas wcześniej funkcji `estymacja_i_wiar()`:
+```{r}
+wyniki1 <- estymacja_i_wiar(10,1,2)
+wyniki2 <- estymacja_i_wiar(50,1,2)
+wyniki3 <- estymacja_i_wiar(100,1,2)
+wyniki4 <- estymacja_i_wiar(500,1,2)
+wyniki5 <- estymacja_i_wiar(1000,1,2)
+```
+
+Otrzymane wyniki przedstawimy w ramce danych, najpierw dla parametru k (w naszym przypadku znajduje się w kolumnie **x** ramki danych):
+```{r}
+wyniki_k1 <- bind_rows(
+  data.frame(liczba_danych ="10", wynik = wyniki1$x),
+  data.frame(liczba_danych = "50", wynik = wyniki2$x),
+  data.frame(liczba_danych="100",wynik=wyniki3$x),
+  data.frame(liczba_danych="500",wynik=wyniki4$x),
+  data.frame(liczba_danych="1000",wynik=wyniki5$x)
+)
+generowanie_charakterystyki(wyniki_k1)
+wykres(wyniki_k1,"k")
+pudelkowy(wyniki_k1,"k")
+```
+
+Możemy dostrzec, że wraz ze wzrostem ilości danych rozkład estymatorów parametru k jest coraz bliższy rzeczywistej wartości tego parametru, występują mniejsze wartości odstające, zmniejsza się odchylenie standardowe, jak również i skośność wraz z kurtozą. Rozkład normalny występuje dla liczby danych 100, 500 i 1000. Na wykresach widać, że rozkłady stają się coraz bardziej symetryczne, a outliery występują sporadycznie i nie są aż tak odległe od mediany.
+
+A następnie zrobimy to samo ale dla parametru θ, który u nas znajduje się w kolumnie **y** ramki danych:
+```{r}
+wyniki_t2 <- bind_rows(
+  data.frame(liczba_danych ="10", wynik = wyniki1$y),
+  data.frame(liczba_danych = "50", wynik = wyniki2$y),
+  data.frame(liczba_danych="100",wynik=wyniki3$y),
+  data.frame(liczba_danych="500",wynik=wyniki4$y),
+  data.frame(liczba_danych="1000",wynik=wyniki5$y)
+)
+generowanie_charakterystyki(wyniki_t2)
+wykres(wyniki_t2,"t")
+pudelkowy(wyniki_t2,"t")
+```
+
+Możemy zauważyć, że dla drugiego parametru rozkładu, występuje podobna sytuacja, otóż wraz ze wzrostem liczby danych średnia zbliża się do 2, maleje odchylenie standardowe, skośność i kurtoza zbliżają się do 0. Test Shapiro-Wilka wykazał normalność rozkładu dla liczby danych 50, 500 i 1000. Wykresy obrazują, że rozkłady stają się coraz bardziej symetryczne oraz występują mniejsze wartości odstające. Dane coraz bardziej skupiają się wokół średniej i mediany.
+
+# Drugi przypadek
+
+W drugim przypadku sprawdzimy estymator dla rozkładu gamma o parametrach k=9 oraz θ=0.5.
+
+Zobaczmy jak wygląda taki rozkład:
+```{r}
+okej2 <- rgamma(10000,shape=9,scale=0.5)
+r2 <- data.frame(value=okej2,group="k=9,teta=0.5")
+ggplot(r2, aes(x = value, fill = group)) +
+  geom_density(alpha = 0.5) +
+     scale_fill_manual(values = "green") 
+
+```
+
+Następnie do 5 wektorów wstawimy dane, które będą zawierały wartości estymowanych parametrów w zależności od liczby danych, użyjemy do tego stworzonej przez nas wcześniej funkcji `estymacja_i_wiar()`:
+```{r}
+wyniki12 <- estymacja_i_wiar(10,9,0.5)
+wyniki22 <- estymacja_i_wiar(50,9,0.5)
+wyniki32 <- estymacja_i_wiar(100,9,0.5)
+wyniki42 <- estymacja_i_wiar(500,9,0.5)
+wyniki52 <- estymacja_i_wiar(1000,9,0.5)
+```
+
+Otrzymane wyniki przedstawimy w ramce danych, najpierw dla parametru k (w naszym przypadku znajduje się w kolumnie **x** ramki danych):
+```{r}
+wyniki_k9 <- bind_rows(
+  data.frame(liczba_danych ="10", wynik = wyniki12$x),
+  data.frame(liczba_danych = "50", wynik = wyniki22$x),
+  data.frame(liczba_danych="100",wynik=wyniki32$x),
+  data.frame(liczba_danych="500",wynik=wyniki42$x),
+  data.frame(liczba_danych="1000",wynik=wyniki52$x)
+)
+generowanie_charakterystyki(wyniki_k9)
+wykres(wyniki_k9,"k")
+pudelkowy(wyniki_k9,"k")
+```
+
+W tym przypadku ponownie dostrzegamy, że wraz ze wzrostem liczby danych, średnia zbliża się do rzeczywistej wartości, a odchylenie standardowe maleje do 0. Ciężko wyciągnąć dokładne wnioski co do zachowania się skośności i kurtozy, gdyż zdają się nie zależeć od liczby obserwacji. Normalność rozkładu została stwierdzona jedynie dla liczby danych równej 1000. Co do wykresów, możemy powiedzieć, że wraz ze wzrostem liczby danych, są one coraz bardziej skupione wokół średniej i mediany oraz występuje mniej znaczących wartości odstających.
+
+A następnie zrobimy to samo ale dla parametru θ, który u nas znajduje się w kolumnie **y** ramki danych:
+```{r}
+wyniki_t05 <- bind_rows(
+  data.frame(liczba_danych ="10", wynik = wyniki12$y),
+  data.frame(liczba_danych = "50", wynik = wyniki22$y),
+  data.frame(liczba_danych="100",wynik=wyniki32$y),
+  data.frame(liczba_danych="500",wynik=wyniki42$y),
+  data.frame(liczba_danych="1000",wynik=wyniki52$y)
+)
+generowanie_charakterystyki(wyniki_t05)
+wykres(wyniki_t05,"t")
+pudelkowy(wyniki_t05,"t")
+```
+
+W tej sytuacji, podobnie jak dla parametru k, wraz ze wzrostem liczby danych, maleje odchylenie standardowe, a średnia jest coraz bliższa wartości rzeczywistej parametru θ. Dodatkowo dla tego parametru możemy dokładniej dostrzec malejącą do 0 skośność i kurtoze, która odrobinę mocniej zmniejsza się wraz ze wzrostem liczby danych. Normalność rozkłądu została ukazana tylko dla rozkładu o liczbie danych równej 1000. Wykresy obrazują nam ponownie, że wraz ze wzrostem liczby danych, coraz więcej z obserwacji jest bliżej średniej, a wartości odstające występują rzadziej, rozkłady są ponadto coraz bardziej symetryczne.
+
+# Trzeci przypadek
+
+W drugim przypadku sprawdzimy estymator dla rozkładu gamma o parametrach k=5 oraz θ=1.
+
+Zobaczmy jak wygląda taki rozkład:
+```{r}
+okej3 <- rgamma(10000,shape=5,scale=1)
+r3 <- data.frame(value=okej3,group="k=5,teta=1")
+ggplot(r2, aes(x = value, fill = group)) +
+  geom_density(alpha = 0.5)+
+     scale_fill_manual(values = "orange") 
+
+```
+
+Następnie do 5 wektorów wstawimy dane, które będą zawierały wartości estymowanych parametrów w zależności od liczby danych, użyjemy do tego stworzonej przez nas wcześniej funkcji `estymacja_i_wiar()`:
+```{r}
+wyniki13 <- estymacja_i_wiar(10,5,1)
+wyniki23 <- estymacja_i_wiar(50,5,1)
+wyniki33 <- estymacja_i_wiar(100,5,1)
+wyniki43 <- estymacja_i_wiar(500,5,1)
+wyniki53 <- estymacja_i_wiar(1000,5,1)
+```
+
+Otrzymane wyniki przedstawimy w ramce danych, najpierw dla parametru k (w naszym przypadku znajduje się w kolumnie **x** ramki danych):
+```{r}
+wyniki_k5 <- bind_rows(
+  data.frame(liczba_danych ="10", wynik = wyniki13$x),
+  data.frame(liczba_danych = "50", wynik = wyniki23$x),
+  data.frame(liczba_danych="100",wynik=wyniki33$x),
+  data.frame(liczba_danych="500",wynik=wyniki43$x),
+  data.frame(liczba_danych="1000",wynik=wyniki53$x)
+)
+generowanie_charakterystyki(wyniki_k5)
+wykres(wyniki_k5,"k")
+pudelkowy(wyniki_k5,"k")
+```
+
+Podobnie jak w poprzednich przypadkach, wraz ze wzrostem liczby danych maleje odchylenie standardowe, w dodatku skośność i kurtoza maleją do 0. Ponadto średnia wartość estymatorów jest znacznie bliższa rzeczywistej. Test Shapiro-Wilka nie odrzucił hipotezy głównej dla rozkładów o liczbie danych 500 i 1000, co oznacza, że są one normalne. Wykres gęstości pokazuje nam coraz bardziej symetryczne rozkłady, natomiast wykres pudełkowy koncentrację danych wokół mediany i zmniejszenie się wartości odstających.
+
+A następnie zrobimy to samo ale dla parametru θ, który u nas znajduje się w kolumnie **y** ramki danych:
+```{r}
+wyniki_t1 <- bind_rows(
+  data.frame(liczba_danych ="10", wynik = wyniki13$y),
+  data.frame(liczba_danych = "50", wynik = wyniki23$y),
+  data.frame(liczba_danych="100",wynik=wyniki33$y),
+  data.frame(liczba_danych="500",wynik=wyniki43$y),
+  data.frame(liczba_danych="1000",wynik=wyniki53$y)
+)
+
+generowanie_charakterystyki(wyniki_t1)
+wykres(wyniki_t1,"t")
+pudelkowy(wyniki_t1,"t")
+```
+
+W tym przypadku również dla małej liczby danych rozkład cechuje skośność prawostronna oraz dosyć spore odchylenie standardowe, jednakże wraz ze wzrostem liczby danych skośność maleje do 0, podobnie odchylenie standardowe, kurtoza odrobinę się zmniejsza. Wartości średnie estymatorów są coraz blizsze wartości 1, czyli tej rzeczywistej. Rozkład normalny występuje dla liczby danych równej 100, 500 i 1000. Wykres gęstości pokazuje nam coraz bardziej symetryczne rozkłady, natomiast wykres pudełkowy koncentrację danych wokół mediany i zmniejszenie się wartości odstających.
+
+# Wnioski
+
+Podsumowując można wyciągnąć następujące wnioski:
+- Estymatory szacują znacznie lepiej dla większej liczby danych, widać to w każdym z przypadków.
+- Estymatory obu parametrów k i θ mają rozkłady normalne, jednakże tylko dla większej liczby danych.
+- Zachowania estymatorów nie różnią się znacząco w zależności od szacowanego parametru.
+- Podobnie zachowania estymatorów nie różnią się znacząco w przypadku różnych rzeczywistych wartości szacowanych parametrów, zachowują się podobnie przy zmianach w każdej sytuacji.
+- Wraz ze wzrostem danych rozkłady estymatorów są coraz bardziej symetryczne dla każdego z przypadków.
