@@ -1,0 +1,301 @@
+---
+title: "RPiSM Projekt nr 2"
+author: "Wojciech Kantor, Wojciech Liberacki, Łukasz Maczek"
+date: "2024-01-14"
+output: 
+  html_document:
+    toc: true
+    toc_float:
+      smooth_scrool: true
+    df_print: paged
+---
+# **WARIANT 1 **
+
+## **Obróbka danych i obliczenie stóp**
+  Pobraliśmy ze strony stooq.pl dane dotyczące firmy PEPCO od 3 stycznia 2022 do 29 grudnia 2023. Dane zawierają w sobie takie informacje jak data, dzień tygodnia, wynik otwarcia, wynik zamknięcia. 
+  Następnie korzystając z Excela, obliczyliśmy stopy zwrotu odejmując logarytmy wartosci zamknięcia dnia poprzedniego(n-1) od dnia obecnego(n). Aby obliczyć to dla wszystkich dni, wliczając pierwszy, skorzystaliśmy z wartości z dnia poprzedniego(czyli ostatni dzień roku 2021), na końcu  usunęliśmy wiersz zawierający te dane.
+
+## **Wczytanie danych**
+
+Potrzebne pakiety:
+```{r message=FALSE, warning=FALSE}
+library(readxl)
+library(ggplot2)
+library(psych)
+library(moments)
+library(dplyr)
+library(BSDA)
+```
+
+W wariancie pierwszym będziemy się opierać na całości dostępnych danych od początku roku 2022 do końca roku 2023.
+
+Po wczytaniu danych dotyczących Pepco, stworzona została tabelka w excelu, którą teraz wczytamy.
+```{r}
+dane <- read_excel("C:/Users/kanto/OneDrive/Pulpit/PROJEKT RPISM 2 CALOSC/DANE-PEPCO.xlsx")
+#jako ścieżkę w funkcji read_excel() należy podać swoją ścieżkę do podanego pliku z excela
+head(dane)
+str(dane)
+```
+
+Zmienimy niektóre typy zmiennych:
+```{r}
+dane$Data <- as.Date(dane$Data) # ustalamy jako datę
+dane$DzienTygodnia <- as.factor(dane$DzienTygodnia) # ustalamy jako typ factor
+dane$DzienTygodnia <- factor(dane$DzienTygodnia, 
+                             levels = c("poniedziałek", "wtorek", "środa", "czwartek", "piątek"))
+```
+
+
+
+## **Obliczenie charaktertystyk i normalność rozkładu**
+
+### Funkcja
+
+Tworzymy funkcję, która dla wybranej zmiennej będzie obliczała podstawowe statystyki i zwracała je w ramce danych:
+```{r}
+generowanie_charakterystyki <- function(d){ 
+  charakterystyki_rozkladu <- data.frame(
+    "Średnia" = round(mean(d),5),
+    "Odchylenie std." = round(sd(d),5),
+    "Skośność"=round(skewness(d),5),
+    "Kurtoza"=round(kurtosis(d),5),
+    "Minimum"=round(min(d),5),
+    "Maximum"=round(max(d),5),
+    "Rozkładn nor." = ifelse(shapiro.test(d)$p.value > 0.05,"Tak","Nie")
+    ,check.names = FALSE
+  )
+  return(charakterystyki_rozkladu)
+  }
+```
+
+Aby ułatwić późniejsze obliczenia i porównania dodamy wektory, które będą przechowywały dane z konkretnych dni tygodnia:
+```{r}
+dane_poniedzialek <- dane[dane$DzienTygodnia == "poniedziałek",]
+dane_wtorek <- dane[dane$DzienTygodnia=="wtorek",]
+dane_sroda <- dane[dane$DzienTygodnia=="środa",]
+dane_czwartek <- dane[dane$DzienTygodnia=="czwartek",]
+dane_piatek <- dane[dane$DzienTygodnia=="piątek",]
+```
+
+
+### Charakterystyki i Normalność Rozkładu
+
+Korzystając ze stworzonej przez nas funkcji, pokażemy charakterystyki stóp zwrotu dla każdego dnia tygodnia:
+```{r}
+generowanie_charakterystyki(dane$`Stopa zwrotu`)
+```
+Średnia logarytmiczna stopa zwrotu jest minimalnie na minusie, co może oznaczać, że spółka osiągnęła stratę w badanym okresie czasu, jeśli chodzi o notowania na giełdzie. W dodatku możemy zauważyć, że kurtoza jest bardzo wysoka w przedstawionych danych, mają one silny rozkład leptokurtyczny. Ponadto widzimy silną skośność lewostronną rozkładu, co zgadza się z wynikiem testu Shapiro-Wilka, który wykazał, że dane nie pochodzą z rozkładu normalnego.
+
+```{r}
+generowanie_charakterystyki(dane_poniedzialek$`Stopa zwrotu`)
+```
+Jak widać, w poniedziałki spółka odnotowywała średnio zysk, co widać po dodatnim, średnim wyniku logarytmicznej stopy zwrotu. Kurtoza jest większa od 3, więc jest to rozkład leptokurtyczny, skośność jest prawostronna. Dane z poniedziałków nie pochodzą z rozkładu normalnego.
+
+```{r}
+generowanie_charakterystyki(dane_wtorek$`Stopa zwrotu`)
+```
+We wtorki średnia jest bardzo bliska 0, więc spółka osiągała średnio bardzo mały zysk w te dni tygodnia. Kurtoza jest niższa niż w poniedziałki, jednak i tak sporo większa od 3. Skośność w tym przypadku jest lewostronna. Dane nie pochodzą z rozkładu normalnego.
+
+```{r}
+generowanie_charakterystyki(dane_sroda$`Stopa zwrotu`)
+```
+We środy spółka osiągała średnio małą stratę. Kurtoza jest wysoka i prawie równa 6, jednakże w tym przypadku występuje niewielka skośność prawostronna, która świadczy o tym, że badany rozkład jest bliski symetrycznemu. Pomimo to dane nie pochodzą z rozkładu normalnego, co pokazuje nam wynik testu Shapiro-Wilka.
+
+```{r}
+generowanie_charakterystyki(dane_czwartek$`Stopa zwrotu`)
+```
+We czwartki widzimy, że badana przez nas spółka osiągała średnio małą stratę. Dane są bardzo skoncentrowane wokół średniej, o czym świadczy wartość kurtozy większa niż 21. Ponadto mamy w tym przypadku do czynienia z silną skośnością lewostronną. Jak można zauważyć po wartościach kurtozy i skośności jak i również teście Shapiro-Wilka, dane nie pochodzą z rozkładu normalnego.
+
+```{r}
+generowanie_charakterystyki(dane_piatek$`Stopa zwrotu`)
+```
+W piątki widzimy, że średnia ponownie jest na minusie, co świadczy o tym, że spółka w te dni tygodnia odnosiła przeciętnie stratę. Możemy zauważyć dużą kurtozę i umiarkowaną skośność lewostronną. Dane nie pochodzą z rozkładu normalnego.
+
+
+
+### Wykres Gęstości
+
+```{r}
+wykres <- ggplot(dane, aes(x = `Stopa zwrotu`, fill = DzienTygodnia)) +
+  geom_density(alpha = 0.5, position = "identity") +
+  labs(title = "Wykres gęstości średnich w zależności od dnia tygodnia",
+       x = "Wartości", y = "Gęstość", fill = "Dzień Tygodnia") +
+  theme_minimal() +
+  facet_wrap(~ DzienTygodnia, scales = "free")
+wykres
+```
+
+Pokazane wykresy gęstości dobrze obrazują nam i potwierdzają wyciagnięte wcześniej wnioski, przede wszystkim widać mocną skośność prawostronną w poniedziałki, symetrię rozkładu środowego i dużą koncentrację obserwacji w czwartki.
+
+
+
+### Wykres Pudełkowy
+
+```{r}
+pudelkowy <- ggplot(dane,aes(x=DzienTygodnia,y=`Stopa zwrotu`,fill=DzienTygodnia))+
+  geom_boxplot()
+pudelkowy
+```
+
+Na wykresie pudełkowym widzimy, że w każdym dniu tygodnia występują duże wartości odstające, co na pewno wpływa na negatywny wynik testu Shapiro-Wilka.
+
+
+
+
+## **Porównaniu rozkładów stóp zwrotu we wtorki i piątki**
+
+Porównania dokonamy testem Kołmogorowa-Smirnowa, czyli funkcji `ks.test()`, która jako argumenty przyjmuje badane rozkłady oraz rodzaj hipotezy alternatywnej, w naszym przypadku `"two.sided"`, gdyż sprawdzamy czy badane rozkłądy są takie same.
+
+```{r}
+ks.test(x = dane_piatek$`Stopa zwrotu`,dane_wtorek$`Stopa zwrotu`,
+        alternative = "two.sided")
+```
+Widzimy, że p-value wynosi 0.8127, co na przyjętym przez nas poziomie istotności $\alpha = 0.05$ świadczy o braku podstaw do odrzucenia hipotezy głównej, czyli rozkłady są bardzo podobne lub nawet takie same.
+
+
+
+## **Porównanie wartości oczekiwanych stóp zwrotu we wtorki i piątki**
+
+Z uwagi na to, że nie mamy do czynienia z rozkładem normalnym, do porównania wartości oczekiwanych stóp zwrotu we wtorki i piątki skorzystamy z funkcji `z.test()`, która pochodzi z pakietu `BSDA`. Ponadto zakładamy, że mamy do czynienia z dużą ilością danych. Jako arugmenty przyjmujemy kolejno: oba badane przez nas rozkłady, `mu = 0` oznaczające, że badamy równość wartości oczekiwanych, a następnie podajemy w argumentach `sigma.x` oraz `sigma.y` odchylenia standardowe obu populacji:
+
+```{r}
+z.test(dane_piatek$`Stopa zwrotu`, dane_wtorek$`Stopa zwrotu`,
+       mu=0,alternative = "two.sided",
+       sigma.x=sd(dane_piatek$`Stopa zwrotu`),sigma.y=sd(dane_wtorek$`Stopa zwrotu`))
+```
+Z testu wynika, że nie ma podstaw do odrzucenia hipotezy głównej, na przyjętym przez nas poziomie istotności $\alpha = 0.05$, co oznacza, że wartości oczekiwane stóp zwrotu z wtorku i piątku nie różnią się istotnie.
+
+
+
+# **WARIANT 2**
+
+
+W wariancie drugim, będziemy działać na $\frac{1}{3}$ wszystkich danych. Wzięliśmy pod uwagę dni od 3 stycznia 2022 do 5 sierpnia 2022. Wszystkich danych było 502, więc $\frac{1}{3}$ danych po zaokrągleniu to 151. Przez to, że dane są wciąż po kolei, wartości stóp zwrotu dla poszczególnych dni są wciąż takie same jak w wariancie 1.
+
+
+## **Wczytanie danych**
+
+
+```{r}
+dane13 <- read_excel("C:/Users/kanto/OneDrive/Pulpit/PROJEKT RPISM 2 CALOSC/DANE-PEPCO-JEDNATRZECIA.xlsx")
+#jako ścieżkę w funkcji read_excel() należy podać swoją ścieżkę do podanego pliku z excela
+head(dane13)
+str(dane13)
+```
+Ponownie zmienimy niektóre typy zmiennych:
+
+```{r}
+dane13$Data <- as.Date(dane13$Data)
+dane13$DzienTygodnia <- as.factor(dane13$DzienTygodnia)
+dane13$DzienTygodnia <- factor(dane13$DzienTygodnia, 
+                               levels = c("poniedziałek", "wtorek", "środa", "czwartek", "piątek"))
+```
+
+
+
+## **Obliczenie charaktertystyk i normalność rozkładu**
+
+
+### Charakterystyki i Normalność Rozkładu
+
+Ponownie skorzystamy z wektorów, które zawierają wartości dla każdego dnia tygodnia osobno:
+
+```{r}
+dane_poniedzialek13 <- dane13[dane13$DzienTygodnia == "poniedziałek",]
+dane_wtorek13 <- dane13[dane13$DzienTygodnia=="wtorek",]
+dane_sroda13 <- dane13[dane13$DzienTygodnia=="środa",]
+dane_czwartek13 <- dane13[dane13$DzienTygodnia=="czwartek",]
+dane_piatek13 <- dane13[dane13$DzienTygodnia=="piątek",]
+```
+
+Korzystając ze stworzonej przez nas na początku funkcji, obliczymy podstawowe statystyki opisowe dla badanym rozkładów dla każdego dnia tygodnia osobno i wszystkich łącznie, jednakże tym razem wszystko dla $\frac{1}{3}$ wszystkich danych:
+
+```{r}
+generowanie_charakterystyki(dane13$`Stopa zwrotu`)
+```
+W poniedziałki widzimy, że spółka średnio uzyskuje stratę. Co do rozkładu, kurtoza jest zbliżona do 3, a skośność dodatnia, jednak poniżej wartości 0.3, a więc wynik testu Shapiro-Wilka stwierdza, że dane pochodzą z rozkładu normalnego.
+
+```{r}
+generowanie_charakterystyki(dane_poniedzialek13$`Stopa zwrotu`)
+```
+W poniedziałki spółka średnio notowała zysk, o czym świadczy dodatnia wartość średniej logarytmicznych stóp zwrotu. Występuje dosyć silna skośność prawostronna (0.574), a kurtoza jest bliska 3 (3.2), test Shapiro-Wilka potwierdza, że dane pochodzą z rozkładu normalnego.
+
+```{r}
+generowanie_charakterystyki(dane_wtorek13$`Stopa zwrotu`)
+```
+We wtorki średnio spółka notowała stratę. Kurtoza jest równa około 2.4, co świadczy o lekkim rozkładzie platokurtycznym, występuje również umiarkowana skośność prawostronna. Dane pochodzą z rozkładu normalnego.
+
+```{r}
+generowanie_charakterystyki(dane_sroda13$`Stopa zwrotu`)
+```
+We środy spółka także odnotowuje średnio stratę. Kurtoza jest praktycznie równa 3, a skośność bliska 0 (delikatna prawostronna), dane pochodzą z rozkładu normalnego.
+
+```{r}
+generowanie_charakterystyki(dane_czwartek13$`Stopa zwrotu`)
+```
+We czwartki spółka osiąga średnio stratę, kurtoza ponownie jest zbliżona do 3, występuje niewielka skośność prawostronna. Dane pochodzą z rozkładu normalnego.
+
+```{r}
+generowanie_charakterystyki(dane_piatek13$`Stopa zwrotu`)
+```
+W piątki badana spółka również jak w pozostałych dniach średnio osiąga stratę, kurtoza w te dni tygodnia jest równa około 3.6, a skośność jest lewostronna o wartości około -0.57. Test Shapiro-Wilka wskazuje, że dane pochodzą z rozkładu normalnego.
+
+
+
+### Wykres Gęstości
+
+```{r}
+wykres13 <- ggplot(dane13, aes(x = `Stopa zwrotu`, fill = DzienTygodnia)) +
+  geom_density(alpha = 0.5, position = "identity") +
+  labs(title = "Wykres gęstości średnich w zależności od dnia tygodnia",
+       x = "Wartości", y = "Gęstość", fill = "Dzień Tygodnia") +
+  theme_minimal() +
+  facet_wrap(~ DzienTygodnia, scales = "free")
+wykres13
+```
+
+Na pokazanych wykresach gęstości widzimy, że rozkłady są znacznie bardziej wypłaszczone niż te badane na całości danych. Dostrzegamy mniejszą koncentrację wokół średniej oraz grubsze ogony rozkładu.
+
+
+
+### Wykres Pudełkowy
+
+```{r}
+pudelkowy13 <- ggplot(dane13,aes(x=DzienTygodnia,y=`Stopa zwrotu`,fill=DzienTygodnia))+
+  geom_boxplot()
+pudelkowy13
+```
+
+Na wykresie pudełkowym z wąsem zauważyć, że w porównaniu do całości danych, dla ich $\frac{1}{3}$ występuje mniej outlierów, a dane nie są aż tak skupione wokół mediany, o czym świadczą rozmiary pudełek.
+
+
+
+## **Porównaniu rozkładów stóp zwrotu we wtorki i piątki**
+
+Ponownie skorzystamy z funkcji `ks.test()`, która przeprowadza test Kołmogorowa-Smirnowa, badający podobieństwo rozkładów, u nas podobieństwo rozkładów stóp zwrotu we wtorki i piątki:
+
+```{r}
+ks.test(x = dane_piatek13$`Stopa zwrotu`,dane_wtorek13$`Stopa zwrotu`,
+        alternative = "two.sided")
+```
+Widzimy, że p-value wynosi 0.3929, co na przyjętym przez nas poziomie istotności $\alpha = 0.05$ świadczy o braku podstaw do odrzucenia hipotezy głównej, czyli rozkłady są bardzo podobne, lub takie same.
+
+
+
+## **Porównanie wartości oczekiwanych stóp zwrotu we wtorki i piątki**
+
+W tym przypadku, znając wyniki testu Shapiro-Wilka, mamy do czynienia z rozkładami normalnymi, więc do porównania wartości oczekiwanych stóp zwrotu we wtorki i piątki skorzystamy z funkcji `z.test()`, bez konieczności zakłożenia, że ilość obserwacji jest duża:
+
+```{r}
+z.test(dane_piatek13$`Stopa zwrotu`,
+       dane_wtorek13$`Stopa zwrotu`,mu=0,alternative = "two.sided",
+       sigma.x=sd(dane_piatek13$`Stopa zwrotu`),sigma.y=sd(dane_wtorek13$`Stopa zwrotu`))
+```
+Z testu wynika, że nie ma podstaw do odrzucenia hipotezy głównej, na przyjętym przez nas poziomie istotności $\alpha = 0.05$, co oznacza, że wartości oczekiwane stóp zwrotu z wtorku i piątku nie różnią się istotnie.
+
+
+
+# **WNIOSKI**
+
+Możemy zauważyć, że w zależności od wielkości obserwacji, na której dokonujemy analizy, wyniki statystyk opisowych, jak również rozkłady różnią się od siebie istotnie. Gdy wzięliśmy $\frac{1}{3}$ obserwacji, wszystkie rozkłady były normalne, co ułatwiało przeprowadzanie testów, bez koniecznych założeń.
+
