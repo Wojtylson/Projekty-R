@@ -10,7 +10,7 @@ Project3 includes a study of the classification of estimators of the Main Method
 
 Project4 contains a small Excel project that calculates the confidences for the expected value for available and infinite.
 
-//////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////<br>
 Projekty-R (polish)
 Repozytorium zawiera wszelkie projekty związane ze statystyką i analizą danych. Wszystkie projekty są w wersji HTML oraz w wersji R Markdown. Cały kod napisany jest w języku R.
 
