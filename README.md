@@ -1,4 +1,5 @@
-#R-Projects
+# R-Projects 
+
 The repository contains all projects related to statistics and data analysis. All projects are in HTML and R Markdown versions. All code is written in R.
 
 Project1 contains the characteristics of means from data drawn from a gamma distribution. Descriptive statistics and charts depending on the change in the amount of data drawn.
